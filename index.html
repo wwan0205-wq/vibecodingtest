@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>小小工程師的智能家居 💡 (UART 穩定版)</title>
+    <title>小小工程師的智能家居 💡 (終極除錯版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 flex flex-col items-center justify-center min-h-screen font-sans text-white p-4">
 
     <div class="text-center mb-4">
         <h1 class="text-3xl font-bold mb-2 tracking-wide text-amber-400">🏡 小小工程師的智能家居</h1>
-        <p class="text-slate-400 text-sm">第三階段修正版：透過藍牙 UART 穩定感應 🌟</p>
+        <p class="text-slate-400 text-sm">第三階段：自動除錯全感應版本 🌟</p>
     </div>
 
     <div class="mb-4 flex flex-col items-center gap-2">
-        <button id="btnConnect" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-6 rounded-full shadow-lg transition flex items-center gap-2">
-            🤖 步驟 1：連線我的 Micro:bit
+        <button id="btnConnect" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-full shadow-lg transition flex items-center gap-2 text-lg animate-pulse">
+            🤖 點我連線 Micro:bit
         </button>
-        <div class="flex gap-4 text-sm mt-1">
-            <p>連線狀態: <span id="connectStatus" class="text-red-400 font-bold">尚未連接</span></p>
+        <div class="flex gap-6 text-sm mt-2 bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">
+            <p>連線狀態: <span id="connectStatus" class="text-red-400 font-bold">❌ 尚未連接</span></p>
             <p>真實房間亮度: <span id="lightValueDisplay" class="text-amber-400 font-bold">--</span></p>
         </div>
     </div>
@@ -27,9 +27,9 @@
         <canvas id="gameCanvas" width="800" height="450" class="rounded-lg shadow-inner"></canvas>
     </div>
 
-    <div class="mt-6 bg-slate-800 px-8 py-3 rounded-full border border-slate-700 shadow-md">
-        <p id="systemMode" class="text-lg font-medium text-slate-300 flex items-center gap-2">
-            🔄 請連接 Micro:bit 來啟動自動感應模式...
+    <div class="mt-6 bg-slate-800 px-8 py-3 rounded-full border border-slate-700 shadow-md max-w-xl text-center">
+        <p id="systemMode" class="text-md font-medium text-slate-300">
+            ℹ️ 請讓 Micro:bit 畫面顯示 "READY"，然後點擊上方藍色按鈕連線。
         </p>
     </div>
 
@@ -39,14 +39,11 @@
 
         let isLightOn = true;
         let bluetoothDevice = null;
-        let ledCharacteristic = null;
-        let receiveBuffer = ""; // 用來存收到的文字碎片
+        let receiveBuffer = "";
 
-        // Micro:bit 藍牙專屬魔法代號 (UART 與 LED)
+        // 最穩定的 藍牙 UART 服務代號
         const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-        const UART_TX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Micro:bit 傳給網頁
-        const LED_SERVICE_UUID = 'e95d7b77-251d-470a-a062-fa1922dfa9a8';
-        const LED_TEXT_CHAR_UUID = 'e95d93ee-251d-470a-a062-fa1922dfa9a8';
+        const UART_TX_CHAR_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
         function drawHouse() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -73,32 +70,22 @@
             ctx.fillStyle = '#1e293b'; ctx.fillRect(35, 240, 50, 40);
 
             if (!isLightOn) {
-                ctx.fillStyle = '#f43f5e';
-                ctx.fillRect(51, 250, 6, 6); ctx.fillRect(63, 250, 6, 6); ctx.fillRect(45, 256, 30, 6); ctx.fillRect(51, 262, 18, 6); ctx.fillRect(57, 268, 6, 6);
+                ctx.fillStyle = '#f43f5e'; // 網頁版床頭心形
+                ctx.fillRect(51, 250, 6, 6); ctx.fillRect(63, 250, 6, 6);
+                ctx.fillRect(45, 256, 30, 6); ctx.fillRect(51, 262, 18, 6); ctx.fillRect(57, 268, 6, 6);
                 ctx.fillStyle = 'rgba(244, 63, 94, 0.2)'; ctx.beginPath(); ctx.arc(60, 255, 35, 0, Math.PI * 2); ctx.fill();
             }
         }
 
-        async function sendToMicrobit(message) {
-            if (ledCharacteristic) {
-                try {
-                    let encoder = new TextEncoder();
-                    await ledCharacteristic.writeValue(encoder.encode(message));
-                } catch (error) { console.log("傳送失敗: " + error); }
-            }
-        }
-
-        // 接收電話線傳來的亮度數字
         function handleUartData(event) {
             let decoder = new TextDecoder();
             let textChunk = decoder.decode(event.target.value);
             receiveBuffer += textChunk;
 
-            // 如果收到換行符號，代表一個數字傳完了
             if (receiveBuffer.includes('\n')) {
                 let lines = receiveBuffer.split('\n');
-                let lastData = lines[lines.length - 2].trim(); // 拿到最新的亮度數字
-                receiveBuffer = lines[lines.length - 1]; // 留著還沒傳完的
+                let lastData = lines[lines.length - 2].trim();
+                receiveBuffer = lines[lines.length - 1];
 
                 let value = parseInt(lastData);
                 if (isNaN(value)) return;
@@ -106,22 +93,19 @@
                 document.getElementById('lightValueDisplay').innerText = value;
                 const modeText = document.getElementById('systemMode');
 
-                // 判斷光線開關燈
-                if (value < 40) { // 亮度小於 40 算黑夜
+                if (value < 50) { // 亮度小於 50 算黑夜
                     if (isLightOn !== false) {
                         isLightOn = false;
                         drawHouse();
-                        sendToMicrobit("❤️");
-                        modeText.innerHTML = "🌃 偵測到環境變暗：已自動開啟「床頭愛心夜燈」！";
-                        modeText.className = "text-lg font-medium text-indigo-400 flex items-center gap-2";
+                        modeText.innerHTML = "🌃 偵測到環境變暗：智能家居已切換為黑夜模式。";
+                        modeText.className = "text-md font-medium text-indigo-400";
                     }
                 } else {
                     if (isLightOn !== true) {
                         isLightOn = true;
                         drawHouse();
-                        sendToMicrobit(" ");
-                        modeText.innerHTML = "💡 偵測到環境明亮：已自動關閉夜燈！";
-                        modeText.className = "text-lg font-medium text-amber-400 flex items-center gap-2";
+                        modeText.innerHTML = "💡 偵測到環境明亮：智能家居已切換為白天模式。";
+                        modeText.className = "text-md font-medium text-amber-400";
                     }
                 }
             }
@@ -129,31 +113,46 @@
 
         document.getElementById('btnConnect').addEventListener('click', async () => {
             const statusText = document.getElementById('connectStatus');
-            statusText.innerText = "連線中...";
+            const modeText = document.getElementById('systemMode');
+            statusText.innerText = "⚡ 連線中...";
+            statusText.className = "text-blue-400 font-bold";
             
             try {
+                // 1. 尋找藍牙裝置
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'BBC micro:bit' }],
-                    optionalServices: [UART_SERVICE_UUID, LED_SERVICE_UUID]
+                    optionalServices: [UART_SERVICE_UUID]
                 });
 
+                // 2. 開始連接
+                modeText.innerText = "正在向 Micro:bit 申請通行證...";
                 const server = await bluetoothDevice.gatt.connect();
                 
-                const ledService = await server.getPrimaryService(LED_SERVICE_UUID);
-                ledCharacteristic = await ledService.getCharacteristic(LED_TEXT_CHAR_UUID);
-
+                // 3. 抓取電話線服務
+                modeText.innerText = "正在建立數據電話線...";
                 const uartService = await server.getPrimaryService(UART_SERVICE_UUID);
                 const uartRxCharacteristic = await uartService.getCharacteristic(UART_TX_CHAR_UUID);
                 
+                // 4. 開啟通知
                 await uartRxCharacteristic.startNotifications();
                 uartRxCharacteristic.addEventListener('characteristicvaluechanged', handleUartData);
 
-                statusText.innerText = "🟢 連線成功 (UART)";
+                statusText.innerText = "🟢 連線成功";
                 statusText.className = "text-green-400 font-bold";
-                document.getElementById('systemMode').innerText = "🌞 自動感應系統已上線！用手遮住 Micro:bit 正面的螢幕試試看！";
+                modeText.innerText = "🎉 哇！成功了！現在用手遮住 Micro:bit 的正面屏幕，看看網頁會不會變黑夜！";
+                
             } catch (error) {
                 statusText.innerText = "❌ 連接失敗";
-                console.log(error);
+                statusText.className = "text-red-400 font-bold";
+                
+                // 超實用自動除錯提示
+                if (error.name === 'NotFoundError') {
+                    modeText.innerHTML = "🚫 <b>除錯提示：</b>找不到數據通道。請確認 Micro:bit 開機時是顯示 <b>'READY'</b>，而不是停在 A+B+RESET 的配對畫面喔！";
+                } else if (error.name === 'SecurityError') {
+                    modeText.innerHTML = "🚫 <b>除錯提示：</b>安全限制。請不要直接雙擊打開 HTML 檔案，請把它貼到 <b>CodePen.io</b> 網站上測試！";
+                } else {
+                    modeText.innerHTML = "🚫 <b>連線失敗原因：</b>" + error.message;
+                }
             }
         });
 
