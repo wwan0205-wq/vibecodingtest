@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小老虎的跑酷冒險 - 最終完整版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-indigo-900 flex flex-col items-center justify-center min-h-screen font-sans text-white select-none">
+
+    <h1 class="text-3xl font-bold mb-4 drop-shadow-md">🐅 小老虎跑酷大挑戰 🌈</h1>
+    <p class="text-indigo-200 mb-6">終極階段：分數、加速與重玩系統！</p>
+
+    <div class="relative p-4 bg-white rounded-2xl shadow-2xl border-4 border-indigo-400">
+        <canvas id="gameCanvas" width="800" height="450" class="block rounded-lg shadow-inner"></canvas>
+
+        <div id="gameOverScreen" class="hidden absolute inset-0 bg-black/70 flex flex-col items-center justify-center rounded-2xl">
+            <h2 class="text-4xl font-extrabold text-red-400 mb-2 drop-shadow-md animate-bounce">💥 GAME OVER 💥</h2>
+            <p id="finalScoreText" class="text-2xl text-yellow-300 font-bold mb-6">最終得分：0</p>
+            <button id="restartBtn" class="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-300 hover:to-orange-400 text-white font-bold text-lg rounded-full shadow-lg transform active:scale-95 transition-all duration-150">
+                🔄 重新開始
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreText = document.getElementById('finalScoreText');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // --- 物理與遊戲常數 ---
+        const groundY = 400;
+        const gravity = 0.8;
+        const jumpForce = -15;
+
+        // --- 遊戲變數（會隨著遊戲進行改變） ---
+        let score = 0;
+        let baseSpeed = 5;          // 障礙物的初始速度
+        let currentSpeed = baseSpeed;
+        let spawnTimer = 0;
+        let isGameOver = false;     // 控制遊戲是否結束的開關
+        let obstacles = [];
+
+        // 主角設定
+        const player = {
+            emoji: '🐅',
+            x: 80,
+            y: groundY,
+            size: 50,
+            dy: 0,
+            isGrounded: true,
+            lives: 3,
+            isInvincible: false,
+            invincibleTimer: 0,
+            flashVisible: true
+        };
+
+        // --- 遊戲初始化（重設所有數值） ---
+        function resetGame() {
+            score = 0;
+            currentSpeed = baseSpeed;
+            spawnTimer = 0;
+            isGameOver = false;
+            obstacles = [];
+            
+            player.y = groundY;
+            player.dy = 0;
+            player.isGrounded = true;
+            player.lives = 3;
+            player.isInvincible = false;
+            player.invincibleTimer = 0;
+            player.flashVisible = true;
+
+            // 隱藏 Game Over 畫面
+            gameOverScreen.classList.add('hidden');
+            
+            // 重新啟動遊戲循環
+            update();
+        }
+
+        function jump() {
+            // 如果遊戲結束了，點擊畫面不能跳躍
+            if (isGameOver) return;
+            
+            if (player.isGrounded) {
+                player.dy = jumpForce;
+                player.isGrounded = false;
+            }
+        }
+
+        // 監聽按鍵與點擊
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') jump();
+        });
+        canvas.addEventListener('mousedown', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        // 監聽重新開始按鈕
+        restartBtn.addEventListener('click', resetGame);
+
+        // 碰撞檢測
+        function checkCollision(rect1, rect2) {
+            const distX = Math.abs(rect1.x - rect2.x);
+            const distY = Math.abs(rect1.y - rect2.y);
+            return (distX < 35 && distY < 35);
+        }
+
+        // 遊戲主循環
+        function update() {
+            // 如果開關被關掉了，就停止執行 update，畫面就會定格
+            if (isGameOver) return;
+
+            // 1. 主角重力
+            player.y += player.dy;
+            if (!player.isGrounded) {
+                player.dy += gravity;
+            }
+            if (player.y >= groundY) {
+                player.y = groundY;
+                player.dy = 0;
+                player.isGrounded = true;
+            }
+
+            // 2. 無敵閃爍處理
+            if (player.isInvincible) {
+                player.invincibleTimer--;
+                if (player.invincibleTimer % 5 === 0) {
+                    player.flashVisible = !player.flashVisible;
+                }
+                if (player.invincibleTimer <= 0) {
+                    player.isInvincible = false;
+                    player.flashVisible = true;
+                }
+            }
+
+            // 3. 隨著分數變高，速度慢慢變快（每 300 分速度加 0.8）
+            currentSpeed = baseSpeed + Math.floor(score / 300) * 0.8;
+
+            // 4. 生成障礙物（速度越快，生出來的時間間隔就要縮短，不然會太空）
+            spawnTimer--;
+            if (spawnTimer <= 0) {
+                obstacles.push({
+                    x: canvas.width + 50,
+                    y: groundY - 20,
+                    radius: 20
+                });
+                // 根據當前速度調整出生時間（速度越快，障礙物出來得越密集）
+                const maxInterval = Math.max(45, 120 - (currentSpeed * 4));
+                spawnTimer = Math.floor(Math.random() * 40) + maxInterval;
+            }
+
+            // 5. 移動障礙物、計分與碰撞
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= currentSpeed; // 使用會變快的速度
+
+                const dummyObs = { x: obs.x, y: obs.y + 20 };
+
+                // 碰撞檢測
+                if (!player.isInvincible && checkCollision(player, dummyObs)) {
+                    player.lives--;
+                    player.isInvincible = true;
+                    player.invincibleTimer = 60;
+
+                    // 檢查是不是沒血了
+                    if (player.lives <= 0) {
+                        isGameOver = true;
+                        finalScoreText.innerText = `最終得分：${score} 分`;
+                        gameOverScreen.classList.remove('hidden'); // 顯示精美的結束畫面
+                    }
+                }
+
+                // 成功閃過：當障礙物完全離開左側螢幕時
+                if (obs.x < -20) {
+                    score += 100; // 賺到 100 分！
+                    obstacles.splice(i, 1); // 刪除障礙物
+                }
+            }
+
+            draw();
+            
+            // 只要遊戲沒結束，就持續播放下一幀
+            if (!isGameOver) {
+                requestAnimationFrame(update);
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 藍天
+            ctx.fillStyle = '#7DD3FC';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 背景白雲
+            ctx.fillStyle = '#FFFFFF';
+            drawCloud(150, 100);
+            drawCloud(550, 80);
+
+            // 彩虹道路
+            const rainbowColors = ['#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#8B00FF'];
+            const roadY = 380;
+            const stripeHeight = 4;
+            rainbowColors.forEach((color, i) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(0, roadY + (i * stripeHeight), canvas.width, stripeHeight);
+            });
+
+            // 草地
+            ctx.fillStyle = '#4ADE80';
+            ctx.fillRect(0, 400, canvas.width, 50);
+
+            // 障礙物（灰色圓球）
+            obstacles.forEach(obs => {
+                ctx.beginPath();
+                ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#64748B';
+                ctx.fill();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = '#334155';
+                ctx.stroke();
+            });
+
+            // 主角小老虎
+            if (player.flashVisible) {
+                ctx.font = `${player.size}px serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(player.emoji, player.x, player.y);
+            }
+
+            // 左上角：生命值
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillStyle = '#EF4444';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            let hpText = 'HP: ';
+            for (let i = 0; i < player.lives; i++) {
+                hpText += '★ ';
+            }
+            ctx.fillText(hpText, 20, 20);
+
+            // 右上角：實時分數
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillStyle = '#1E3A8A'; // 深藍色，比較好讀
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillText(`SCORE: ${score}`, canvas.width - 20, 20);
+        }
+
+        function drawCloud(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, Math.PI * 2);
+            ctx.arc(x + 40, y - 10, 40, 0, Math.PI * 2);
+            ctx.arc(x + 80, y, 30, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // 啟動遊戲！
+        update();
+    </script>
+</body>
+</html>
